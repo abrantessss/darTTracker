@@ -3,7 +3,9 @@ import cv2
 import numpy as np
 import pickle
 
-dst_width, dst_height = 700, 700
+dst_width = 700 
+dst_height = 700
+
 dst_points = np.float32([
 	[0, 0],
 	[dst_width-1, 0],
