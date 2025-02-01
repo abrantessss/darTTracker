@@ -27,11 +27,10 @@ print(f"elapsed time: {ed_time - st_time}")
 def ajustCamera(detector):
   """
     Ajusts camera angle
-    :param detector: arUco detector
-    :return: None
   """
-  while cap.isOpened():
+  while True: #cap.isOpened():
     # Capture each frame from the camera
+    
     ret, frame = cap.read()
     if not ret:
         print("Ret: False")
@@ -39,10 +38,9 @@ def ajustCamera(detector):
     
     if frame is not None:
        # Save the current frame as a JPG file, overwriting previous one
-        #cv2.imwrite('frames\\frame.jpg', frame)
-        frame = cv2.imread('frames\\frame.jpg')
         cv2.imwrite('frames\\frame.jpg', frame)
         cv2.imwrite('frames\\background.jpg', frame)
+    
 
     # Detect Aruco markers in the frame
     corners, ids, _ = detector.detectMarkers(frame)
@@ -59,11 +57,15 @@ def ajustCamera(detector):
       # Select four specific markers (IDs 0, 1, 2, and 3 as an example)
       if all(id in marker_corners for id in [0, 1, 2, 3]):
         src_points = np.int32([
-          marker_corners[0][0][1],  # Top-left marker corner
+          marker_corners[0][0][0],  # Top-left marker corner
           marker_corners[1][0][1],  # Top-right marker corner
-          marker_corners[2][0][2],  # Bottom-right marker corner
+          marker_corners[2][0][3],  # Bottom-right marker corner
           marker_corners[3][0][2]  # Bottom-left marker corner
         ])
+
+      #Hard coded for better perspective adjustment | TO DO: Create algoritm to adjust based on the angle of the camera
+      src_points[0][0] = src_points[0][0] + 5 
+      src_points[2][0] = src_points[2][0] + 5 
 
       middle_point = np.int32(np.mean(src_points, axis=0))
       cv2.drawMarker(frame, tuple(src_points[0]), (255, 255, 0), thickness=3)
@@ -83,11 +85,33 @@ def ajustCamera(detector):
         break
   cv2.destroyWindow("Frame with Detected Markers")
 
-def set_frame():
-    '''
-    set new frame
-    '''
-    _, frame = cap.read()
-    if frame is not None:
-        # Save the current frame as a JPG file, overwriting previous one
-        cv2.imwrite('frame\\frame.jpg', frame)
+def setFrame():
+  '''
+  set new frame
+  '''
+  _, frame = cap.read()
+  if frame is not None:
+      # Save the current frame as a JPG file, overwriting previous one
+      cv2.imwrite('frames\\frame.jpg', frame)
+
+def maskDifferences(frame, background, perspective_matrix, frame_size, triangle=13):
+  '''
+  get a mask of the difference between two frames
+  '''
+  transformed_frame = cv2.warpPerspective(frame, perspective_matrix, frame_size)
+  transformed_background = cv2.warpPerspective(background, perspective_matrix, frame_size)
+
+  difference = cv2.absdiff(transformed_background, transformed_frame)
+  blur = cv2.GaussianBlur(difference, (5, 5), 0)
+  for _ in range(10):
+      blur = cv2.GaussianBlur(blur, (9, 9), 1)
+  blur = cv2.bilateralFilter(blur, 9, 75, 75)
+  _ , thresh = cv2.threshold(blur, triangle, 255, 0)
+  gray = cv2.cvtColor(thresh, cv2.COLOR_BGR2GRAY)
+  # Ensure that the image is binary with only black and white pixels
+  mask = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY)[1]
+  mask = cv2.erode(mask, None, iterations=2)
+  mask = cv2.dilate(mask, None, iterations=2)
+  return mask, transformed_frame, transformed_background
+
+

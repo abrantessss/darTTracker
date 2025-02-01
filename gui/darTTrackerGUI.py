@@ -1,14 +1,18 @@
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QHeaderView, QTableWidget, QTableWidgetItem, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QPushButton, QComboBox
-from PyQt6.QtGui import QIcon, QPixmap, QFont
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QHeaderView, QTableWidget, QTableWidgetItem, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QPushButton, QComboBox
+from PyQt6.QtGui import QIcon, QPixmap, QFont, QPainter, QPen, QColor
 from PyQt6.QtCore import Qt
 
 from utils import cameraUtils as camera
 from utils import areasUtils as areas
+from utils import dartUtils as dart
+from collections import deque
 
 import pickle
 import cv2
 import numpy as np
 import os
+import math
+import imutils
 
 class DarTTrackerGUI(QMainWindow):
 	def __init__(self, dev_view, detector, dst_width=camera.dst_width, dst_height=camera.dst_height):
@@ -39,6 +43,8 @@ class DarTTrackerGUI(QMainWindow):
 			self.center, self.rings, self.segments = [350,350], [5,5,5,5,5,5], [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 			print("Warning: Dartboard Areas don't exist.")
 
+		self.app_dartboard_center = 250, 250
+		self.app_dartboard_radius = 188
 		self.initUI()
 
 	def initUI(self):
@@ -80,10 +86,10 @@ class DarTTrackerGUI(QMainWindow):
 		layout.addWidget(right_frame)
 		
 		right_layout = QVBoxLayout(right_frame)
-		dartboard = QPixmap("icons//dartBoard.png")
-		dartboard_label = QLabel(right_frame)
-		dartboard_label.setPixmap(dartboard.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio))
-		right_layout.addWidget(dartboard_label)
+		self.dartboard = QPixmap("icons//dartBoard.png")
+		self.dartboard_label = QLabel(right_frame)
+		self.dartboard_label.setPixmap(self.dartboard.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio))
+		right_layout.addWidget(self.dartboard_label)
 		right_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 	
 	def addTitle(self, title_frame):
@@ -490,9 +496,89 @@ class DarTTrackerGUI(QMainWindow):
 		"""
 		print("Test Detection")
 		self.in_dev_option = True
-		print("To do")
-		#Apenas permite lançar um dado de cada vez, deteta e coloca no alvo da app
-		#No frame CV2 texto com Q-Quit | R-Reset
-		#Mostra os diversos frames: Mascaras e Frame com o dardo detetado
-		#Print da pontução do dardo no Frame
+		reset_detection = True
+		mask_buffer = deque(maxlen=8)
+		for _ in range(15):
+			camera.setFrame()
+			frame = cv2.imread("frames\\frame.jpg")
+			cv2.imwrite("frames\\background.jpg", frame)
+			background = cv2.imread("frames\\background.jpg")
+			mask, _ , _ = camera.maskDifferences(frame, background, self.perspectiveMatrix, (self.dst_width, self.dst_height))
+			mask_buffer.append(mask)
+
+		while True:
+			camera.setFrame()
+			frame = cv2.imread("frames\\frame.jpg")
+			background = cv2.imread("frames\\background.jpg")
+			mask, transformed_frame, transformed_background = camera.maskDifferences(frame, background, self.perspectiveMatrix, (self.dst_width, self.dst_height))
+			mask_buffer.append(mask)
+
+			if reset_detection:
+				if dart.compareMasks(mask, mask_buffer[0]):
+					contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+					if contours:
+						if len(contours) > 5: #Image too noisy, reset
+							cv2.imwrite("frames\\background.jpg", frame)
+							background = frame
+							print("Debug | Noisy Frame, Reset Needed")
+							continue
+						main_contour = max(contours, key=cv2.contourArea)
+						contour_area = cv2.contourArea(main_contour)
+						if contour_area < 300:
+							print("Debug | Small Area Detected")
+							continue
+						dart_tip, triangle_points = dart.findDartTip(main_contour)
+						score, dart_coords = dart.getPoints(dart_tip, self.center, self.rings, self.segments)
+						self.updateAppDartboard(dart_coords)
+						print(f"Score: {score}")
+						reset_detection = False
+			else:
+				dart.drawDetectedDart(dart_tip, triangle_points, transformed_frame)				
+
+			#Windows
+			cv2.putText(transformed_frame,'Q-Quit                                     R-Reset', (5,680), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1.1, (255,255,255), 2, 2)
+			cv2.namedWindow("Old Mask")
+			cv2.imshow("Old Mask", mask_buffer[0])
+			cv2.namedWindow("New Mask")
+			cv2.imshow("New Mask", mask_buffer[-1])
+			cv2.namedWindow("Detection Frame")
+			cv2.imshow("Detection Frame", transformed_frame)
+			cv2.namedWindow("Background Frame")
+			cv2.imshow("Background Frame", transformed_background)
+			
+			key = cv2.waitKey(1) & 0xFF
+			if key == ord('q'):
+				cv2.destroyWindow("Old Mask")
+				cv2.destroyWindow("New Mask")
+				cv2.destroyWindow("Detection Frame")
+				cv2.destroyWindow("Background Frame")
+				break
+			elif key == ord('r'): #reset detection
+				self.dartboard_label.setPixmap(self.dartboard.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio))
+				cv2.imwrite("frames\\background.jpg", frame)
+				background = frame
+				reset_detection = True 
+
 		self.in_dev_option = False
+
+	def updateAppDartboard(self, dart_coords):
+		"""
+		update darts on dartboard of the app
+		"""
+		dartboard = self.dartboard.copy().scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio)
+		radius, angle = dart_coords
+		angle = math.radians(360-angle)
+		if(radius <= self.rings[-1]):
+			scaled_radius = (radius / self.rings[-1]) * self.app_dartboard_radius
+
+			x = int(self.app_dartboard_center[0] + scaled_radius * math.cos(angle))
+			y = int(self.app_dartboard_center[1] - scaled_radius * math.sin(angle)) 
+
+			painter = QPainter(dartboard)
+			pen = QPen(QColor(255, 0, 255))  
+			pen.setWidth(4)
+			painter.setPen(pen)
+			painter.drawLine(x - 5, y - 5, x + 5, y + 5)
+			painter.drawLine(x - 5, y + 5, x + 5, y - 5)
+			painter.end()
+			self.dartboard_label.setPixmap(dartboard)
