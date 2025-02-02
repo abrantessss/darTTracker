@@ -23,19 +23,18 @@ def findDartTip(contour, thresholdMin=10):
 	distanceTop = np.linalg.norm(top_point_tip-triangle_point_tip)
 	distanceBot = np.linalg.norm(bottom_point_tip-triangle_point_tip)
 	distances = [distanceLeft, distanceRight, distanceTop, distanceBot]
-	print(distances)
 	if any(d <= thresholdMin for d in distances):
 		#Used most of the times
-		print("Triangle Method")
+		print("Debug | Triangle Method")
 		dart_tip = triangle_point_tip.astype(np.int32)
 	elif(distanceLeft <= thresholdMin*1.5):
-		print("Triangle Method Left Side")
+		print("Debug | Triangle Method Left Side")
 		dart_tip = triangle_point_tip.astype(np.int32)
 	elif(distanceLeft <= thresholdMin*3):
-		print("Left Point Methond")
+		print("Debug | Left Point Method")
 		dart_tip = left_point_tip.astype(np.int32)
 	else:
-		print("Centroid Methond")
+		print("Debug | Centroid Method")
 		centroide_x = int(np.mean(contour[:, 0, 0]))
 		centroide_y = int(np.mean(contour[:, 0, 1]))
 		dart_tip = np.array([centroide_x, centroide_y], dtype=np.int32)
