@@ -12,7 +12,6 @@ import cv2
 import numpy as np
 import os
 import math
-import imutils
 
 class DarTTrackerGUI(QMainWindow):
 	def __init__(self, dev_view, detector, dst_width=camera.dst_width, dst_height=camera.dst_height):
@@ -497,8 +496,8 @@ class DarTTrackerGUI(QMainWindow):
 		print("Test Detection")
 		self.in_dev_option = True
 		reset_detection = True
-		mask_buffer = deque(maxlen=8)
-		for _ in range(15):
+		mask_buffer = deque(maxlen=6)
+		for _ in range(7):
 			camera.setFrame()
 			frame = cv2.imread("frames\\frame.jpg")
 			cv2.imwrite("frames\\background.jpg", frame)
@@ -524,7 +523,9 @@ class DarTTrackerGUI(QMainWindow):
 							continue
 						main_contour = max(contours, key=cv2.contourArea)
 						contour_area = cv2.contourArea(main_contour)
-						if contour_area < 300:
+						if contour_area < 500:
+							cv2.imwrite("frames\\background.jpg", frame)
+							background = frame
 							print("Debug | Small Area Detected")
 							continue
 						dart_tip, triangle_points = dart.findDartTip(main_contour)
@@ -552,6 +553,7 @@ class DarTTrackerGUI(QMainWindow):
 				cv2.destroyWindow("New Mask")
 				cv2.destroyWindow("Detection Frame")
 				cv2.destroyWindow("Background Frame")
+				self.dartboard_label.setPixmap(self.dartboard.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio))
 				break
 			elif key == ord('r'): #reset detection
 				self.dartboard_label.setPixmap(self.dartboard.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio))
@@ -576,7 +578,7 @@ class DarTTrackerGUI(QMainWindow):
 
 			painter = QPainter(dartboard)
 			pen = QPen(QColor(255, 0, 255))  
-			pen.setWidth(4)
+			pen.setWidth(3)
 			painter.setPen(pen)
 			painter.drawLine(x - 5, y - 5, x + 5, y + 5)
 			painter.drawLine(x - 5, y + 5, x + 5, y - 5)

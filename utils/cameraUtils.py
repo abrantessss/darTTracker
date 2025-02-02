@@ -28,7 +28,7 @@ def ajustCamera(detector):
   """
     Ajusts camera angle
   """
-  while True: #cap.isOpened():
+  while cap.isOpened():
     # Capture each frame from the camera
     
     ret, frame = cap.read()
@@ -82,8 +82,8 @@ def ajustCamera(detector):
           warp_matrix = cv2.getPerspectiveTransform(np.float32(src_points), dst_points)
           with open("pickleFiles//adjusted_matrix.pkl", "wb") as f:
             pickle.dump(warp_matrix, f)
+          cv2.destroyWindow("Frame with Detected Markers")
         break
-  cv2.destroyWindow("Frame with Detected Markers")
 
 def setFrame():
   '''

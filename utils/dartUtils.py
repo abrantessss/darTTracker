@@ -12,24 +12,45 @@ def compareMasks(mask1, mask2, threshold=0.998):
 		#print(f"Similarity: {similarity*100}%")
 		return similarity >= threshold
 
-def findDartTip(contour, thresholdMin=18):
+def findDartTip(contour, thresholdMin=10):
 	"""
 	choose the probable dart tip based on a threshold distance
 	"""
-	left_point_tip = mostLeftPointMethod(contour)
+	left_point_tip, right_point_tip, top_point_tip, bottom_point_tip = extremePoints(contour)
 	triangle_point_tip, triangle_points = triangleMethod(contour)
-	distance = np.linalg.norm(left_point_tip-triangle_point_tip)
-	if(distance <= thresholdMin):
+	distanceLeft = np.linalg.norm(left_point_tip-triangle_point_tip)
+	distanceRight = np.linalg.norm(right_point_tip-triangle_point_tip)
+	distanceTop = np.linalg.norm(top_point_tip-triangle_point_tip)
+	distanceBot = np.linalg.norm(bottom_point_tip-triangle_point_tip)
+	distances = [distanceLeft, distanceRight, distanceTop, distanceBot]
+	print(distances)
+	if any(d <= thresholdMin for d in distances):
+		#Used most of the times
+		print("Triangle Method")
 		dart_tip = triangle_point_tip.astype(np.int32)
+	elif(distanceLeft <= thresholdMin*1.5):
+		print("Triangle Method Left Side")
+		dart_tip = triangle_point_tip.astype(np.int32)
+	elif(distanceLeft <= thresholdMin*3):
+		print("Left Point Methond")
+		dart_tip = left_point_tip.astype(np.int32)
 	else:
-		dart_tip = left_point_tip
+		print("Centroid Methond")
+		centroide_x = int(np.mean(contour[:, 0, 0]))
+		centroide_y = int(np.mean(contour[:, 0, 1]))
+		dart_tip = np.array([centroide_x, centroide_y], dtype=np.int32)
+
 	return dart_tip, triangle_points
 	
-def mostLeftPointMethod(contour):
+def extremePoints(contour):
 	"""
 	find the the tip of the dart by finding the most left point of the contour
 	"""
-	return np.array(contour[contour[:, :, 0].argmin()][0], dtype=np.int32)
+	extLeft = np.array(contour[contour[:, :, 0].argmin()][0], dtype=np.int32)
+	extRight = np.array(contour[contour[:, :, 0].argmax()][0], dtype=np.int32)
+	extTop = np.array(contour[contour[:, :, 1].argmin()][0], dtype=np.int32)
+	extBot = np.array(contour[contour[:, :, 1].argmax()][0], dtype=np.int32)
+	return extLeft, extRight, extTop, extBot
 
 def triangleMethod(contour):
 	"""
@@ -57,7 +78,7 @@ def triangleMethod(contour):
 
 	center = (pt1 + pt2) / 2
 	center = center.astype(np.int32)
-	k = -0.17  # scaling factor for position adjustment of dart tip
+	k = -0.21  # scaling factor for position adjustment of dart tip
 	vect = (dart_point - center)
 	dart_tip = dart_point + k * vect
 
