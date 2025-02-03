@@ -64,8 +64,8 @@ def ajustCamera(detector):
         ])
 
       #Hard coded for better perspective adjustment | TO DO: Create algoritm to adjust based on the angle of the camera
-      src_points[0][0] = src_points[0][0] + 5 
-      src_points[2][0] = src_points[2][0] + 5 
+      src_points[0][0] = src_points[0][0] + 9 
+      src_points[2][0] = src_points[2][0] + 9 
 
       middle_point = np.int32(np.mean(src_points, axis=0))
       cv2.drawMarker(frame, tuple(src_points[0]), (255, 255, 0), thickness=3)
@@ -114,4 +114,14 @@ def maskDifferences(frame, background, perspective_matrix, frame_size, triangle=
   mask = cv2.dilate(mask, None, iterations=2)
   return mask, transformed_frame, transformed_background
 
+def getFrameNoises(mask1, mask2):
+  """
+  given two binary frames returns the percentage of white pixels in the frames
+  """
+  total_pixels = mask1.size
+  white1 = cv2.countNonZero(mask1)
+  white2 = cv2.countNonZero(mask2)
+  noise1 = (white1/total_pixels) * 100
+  noise2 = (white2/total_pixels) * 100
+  return [noise1, noise2]
 

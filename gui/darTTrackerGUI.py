@@ -5,25 +5,34 @@ from PyQt6.QtCore import Qt
 from utils import cameraUtils as camera
 from utils import areasUtils as areas
 from utils import dartUtils as dart
+from utils import playerUtils as player
+from utils import utils
 from collections import deque
+from typing import List
 
 import pickle
 import cv2
-import numpy as np
 import os
 import math
 
 class DarTTrackerGUI(QMainWindow):
-	def __init__(self, dev_view, detector, dst_width=camera.dst_width, dst_height=camera.dst_height):
+	def __init__(self, detector, dst_width=camera.dst_width, dst_height=camera.dst_height):
 		super().__init__()
-		self.dev_view = dev_view
-		self.in_dev_option = False #True if dev button is pressed
+		self.dev_view = utils.dev_view
 		self.detector = detector
 		self.dst_width = dst_width
 		self.dst_height = dst_height
 		self.num_players = 1 #Default
-		self.game_type = 301 #Default
+		self.game_type = 101 #Default
 		self.game_round = 1 #Default
+		self.app_dartboard_center = 250, 250
+		self.app_dartboard_radius = 188
+		self.players: List[player.Player] = []
+		self.num_throws = 1
+		self.leaveGame = False
+		self.dartMissed = False
+		self.nextPlayer = False
+		self.forceEnd = False
 
 		if os.path.isfile("pickleFiles\\adjusted_matrix.pkl"):
 			with open("pickleFiles\\adjusted_matrix.pkl", "rb") as f:
@@ -42,8 +51,6 @@ class DarTTrackerGUI(QMainWindow):
 			self.center, self.rings, self.segments = [350,350], [5,5,5,5,5,5], [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 			print("Warning: Dartboard Areas don't exist.")
 
-		self.app_dartboard_center = 250, 250
-		self.app_dartboard_radius = 188
 		self.initUI()
 
 	def initUI(self):
@@ -156,7 +163,7 @@ class DarTTrackerGUI(QMainWindow):
 				border-color: black;
 				font-size: 12px;
 		""")
-		self.combo_type_game.addItems(['301','501','701'])
+		self.combo_type_game.addItems(['101','301','501','701'])
 		self.combo_type_game.currentIndexChanged.connect(self.onGameType)
 		pre_game_layout.addWidget(self.combo_type_game)
 		pre_game_layout.addSpacing(35)
@@ -209,12 +216,12 @@ class DarTTrackerGUI(QMainWindow):
 		in_game_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 		
 		# Game label
-		game_label = QLabel(f"Game: {self.game_type}                              Round: {self.game_round}")
+		self.game_label = QLabel(f"Game: {self.game_type}                              Round: {self.game_round}")
 		font = QFont("Roboto", 12, QFont.Weight.Bold)
-		game_label.setFont(font)
-		game_label.setStyleSheet("color: white;")
-		game_label.setContentsMargins(10, 10, 0, 0)
-		in_game_layout.addWidget(game_label)
+		self.game_label.setFont(font)
+		self.game_label.setStyleSheet("color: white;")
+		self.game_label.setContentsMargins(10, 10, 0, 0)
+		in_game_layout.addWidget(self.game_label)
 
 		# Table
 		self.table = QTableWidget()
@@ -248,6 +255,7 @@ class DarTTrackerGUI(QMainWindow):
 						padding: 1px;
 				}
 		""")
+		self.table.itemChanged.connect(self.onItemChanged)
 		in_game_layout.addWidget(self.table, alignment=Qt.AlignmentFlag.AlignCenter)
 
 		# Buttons layout
@@ -304,11 +312,14 @@ class DarTTrackerGUI(QMainWindow):
 		self.pre_game_frame.hide()
 		self.in_game_frame.show()
 
+		self.startGame()
+
 	def onLeaveButton(self):
 		"""
 		Leave Game button callback
 		"""
 		print("Leave Game, Back to Main Menu")
+		self.leaveGame = True
 		self.left_layout.replaceWidget(self.in_game_frame, self.pre_game_frame)
 		self.in_game_frame.hide()
 		self.pre_game_frame.show()
@@ -317,14 +328,13 @@ class DarTTrackerGUI(QMainWindow):
 		"""
 		Failed Dart callback
 		"""
-		print("To do")
+		self.dartMissed = True
 	
 	def onNextPlayerButton(self):
 		"""
 		Next Player callback
 		"""
-		print("To do")
-
+		self.nextPlayer = True
 	def bottomButtons(self, layout, frame):
 		"""
 		Bottom buttons
@@ -359,6 +369,16 @@ class DarTTrackerGUI(QMainWindow):
 		quitButton.setCursor(Qt.CursorShape.PointingHandCursor)
 		quitButton.clicked.connect(self.onQuitButtonClick)
 		bottom_layout.addWidget(quitButton)
+
+	def onQuitButtonClick(self):
+		"""
+		Quit button callback
+		"""
+		print("Quit App")
+		cv2.destroyAllWindows()
+		camera.cap.release()
+		QApplication.quit()
+
 
 	def devButtons(self, layout, frame):
 		"""
@@ -449,33 +469,20 @@ class DarTTrackerGUI(QMainWindow):
 		testButton.clicked.connect(self.onTestButtonClick)
 		dev_layout.addWidget(testButton)
 
-
-	def onQuitButtonClick(self):
-		"""
-		Quit button callback
-		"""
-		print("Quit App")
-		cv2.destroyAllWindows()
-		camera.cap.release()
-		QApplication.quit()
-
 	def onCamButtonClick(self):
 		"""
 		Dev camera button callback
 		"""
 		print("Adjust Camera")
-		self.in_dev_option = True
 		camera.ajustCamera(self.detector)
 		with open("pickleFiles\\adjusted_matrix.pkl", "rb") as f:
 			self.perspectiveMatrix = pickle.load(f)
-		self.in_dev_option = False
 
 	def onAreasButtonClick(self):
 		"""
 		Dev areas button callback
 		"""
 		print("Adjust Areas")
-		self.in_dev_option = True
 		if(self.perspectiveMatrix.all() != None):
 			frame = cv2.imread('frames\\frame.jpg')
 			transformed_frame = cv2.warpPerspective(frame, self.perspectiveMatrix, (self.dst_width, self.dst_height))
@@ -487,14 +494,12 @@ class DarTTrackerGUI(QMainWindow):
 				self.segments = config["segments"]
 		else:
 			print("Error: Perspective Matrix doesn't exist")
-		self.in_dev_option = False
 
 	def onTestButtonClick(self):
 		"""
 		Test button callback
 		"""
 		print("Test Detection")
-		self.in_dev_option = True
 		reset_detection = True
 		mask_buffer = deque(maxlen=6)
 		for _ in range(7):
@@ -519,20 +524,29 @@ class DarTTrackerGUI(QMainWindow):
 						if len(contours) > 5: #Image too noisy, reset
 							cv2.imwrite("frames\\background.jpg", frame)
 							background = frame
-							print("Debug | Noisy Frame, Reset Needed")
+							if(utils.debug):
+								print("Debug | Noisy Frame, Reset Needed")
 							continue
 						main_contour = max(contours, key=cv2.contourArea)
 						contour_area = cv2.contourArea(main_contour)
 						if contour_area < 500:
 							cv2.imwrite("frames\\background.jpg", frame)
 							background = frame
-							print("Debug | Small Area Detected")
+							if(utils.debug):
+								print("Debug | Small Area Detected")
 							continue
 						dart_tip, triangle_points = dart.findDartTip(main_contour)
 						score, dart_coords = dart.getPoints(dart_tip, self.center, self.rings, self.segments)
-						self.updateAppDartboard(dart_coords)
+						self.updateAppDartboard([dart_coords])
 						print(f"Score: {score}")
 						reset_detection = False
+				else:
+					noise = camera.getFrameNoises(mask, mask_buffer[0])
+					if all(noises >= 40 for noises in noise):
+						if(utils.debug):
+							print("Debug | Large Amount of Noise, Reset Needed")
+						cv2.imwrite("frames\\background.jpg", frame)
+						background = frame
 			else:
 				dart.drawDetectedDart(dart_tip, triangle_points, transformed_frame)				
 
@@ -563,24 +577,241 @@ class DarTTrackerGUI(QMainWindow):
 
 		self.in_dev_option = False
 
+	def startGame(self):
+		"""
+		Main Game 
+		"""
+		#Create Players
+		for i in range(self.num_players):
+			p = player.Player(i+1, self.game_type)
+			self.players.append(p)
+
+		#Store Buffer Frames
+		mask_buffer = deque(maxlen=6)
+		for _ in range(7):
+			camera.setFrame()
+			frame = cv2.imread("frames\\frame.jpg")
+			cv2.imwrite("frames\\background.jpg", frame)
+			background = cv2.imread("frames\\background.jpg")
+			mask, _ , _ = camera.maskDifferences(frame, background, self.perspectiveMatrix, (self.dst_width, self.dst_height))
+			mask_buffer.append(mask)
+
+		player_index = 0
+		draw_contour = False
+		dart_coords = []
+		current_player = self.players[player_index]
+		self.num_throws = 1
+		self.updateTable(score=self.game_type, command="start")
+
+		#Game
+		while not self.leaveGame and not self.forceEnd:
+			camera.setFrame()
+			frame = cv2.imread("frames\\frame.jpg")
+			background = cv2.imread("frames\\background.jpg")
+			mask, transformed_frame, transformed_background = camera.maskDifferences(frame, background, self.perspectiveMatrix, (self.dst_width, self.dst_height))
+			mask_buffer.append(mask)
+
+			if self.num_throws <= 3:
+				if dart.compareMasks(mask, mask_buffer[0]):
+					contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+					if contours:
+						if len(contours) > 5: #Image too noisy, reset
+							cv2.imwrite("frames\\background.jpg", frame)
+							background = frame
+							if(utils.debug):
+								print("Debug | Noisy Frame, Reset Needed")
+							continue
+						main_contour = max(contours, key=cv2.contourArea)
+						contour_area = cv2.contourArea(main_contour)
+						if contour_area < 500:
+							cv2.imwrite("frames\\background.jpg", frame)
+							background = frame
+							if(utils.debug):
+								print("Debug | Small Area Detected")
+							continue
+						dart_tip, triangle_points = dart.findDartTip(main_contour)
+						throw_score, dart_coord = dart.getPoints(dart_tip, self.center, self.rings, self.segments)
+						if(utils.debug):
+							print(f"Score: {throw_score}")
+						dart_coords.append(dart_coord)
+						self.updateAppDartboard(dart_coords)
+						#Update Game State
+						if(current_player.score-throw_score > 0):
+							current_player.score = current_player.score-throw_score
+							current_player.history.append([throw_score, dart_coord])
+							self.updateTable(player_index, self.num_throws, throw_score, current_player.score, "set")
+							self.num_throws = self.num_throws + 1
+						elif(current_player.score-throw_score < 0):
+							current_player.history.append([0, dart_coord])
+							while self.num_throws <= 3:
+								self.updateTable(player_index, self.num_throws, "x", current_player.score, "set")
+								self.num_throws = self.num_throws + 1
+						else:
+							current_player.score = current_player.score-throw_score
+							current_player.history.append([throw_score, dart_coord])
+							self.updateTable(player_index, self.num_throws, throw_score, current_player.score, "set")
+							self.game_label.setText(f"Player {current_player.id} Won!")
+							cv2.waitKey(1)
+							break
+						draw_contour = True
+						cv2.imwrite("frames\\background.jpg", frame)
+						background = frame
+				else:
+					noise = camera.getFrameNoises(mask, mask_buffer[0])
+					if all(noises >= 40 for noises in noise):
+						if(utils.debug):
+							print("Debug | Large Amount of Noise, Reset Needed")
+						cv2.imwrite("frames\\background.jpg", frame)
+						background = frame
+
+			if(draw_contour):
+				dart.drawDetectedDart(dart_tip, triangle_points, transformed_frame)	
+
+			#Windows
+			if(utils.debug):
+				cv2.namedWindow("Old Mask")
+				cv2.imshow("Old Mask", mask_buffer[0])
+				cv2.namedWindow("New Mask")
+				cv2.imshow("New Mask", mask_buffer[-1])
+				cv2.namedWindow("Detection Frame")
+				cv2.imshow("Detection Frame", transformed_frame)
+				cv2.namedWindow("Background Frame")
+				cv2.imshow("Background Frame", transformed_background)
+				cv2.waitKey(1)
+
+			#Buttons
+			if(self.dartMissed):
+				current_player.history.append([0, [0 ,0]])
+				if(self.num_throws<=3):
+					self.updateTable(player_index, self.num_throws, 0, current_player.score, "set")
+				self.num_throws = self.num_throws + 1
+				self.dartMissed = False
+
+			if(self.nextPlayer):
+				dart_coords = []
+				self.num_throws = 1
+				if player_index+1 < self.num_players:
+					player_index = player_index + 1
+				else:
+					player_index = 0
+					self.updateRound()
+					self.updateTable(command="reset")
+				draw_contour = False
+				current_player = self.players[player_index]
+				cv2.imwrite("frames\\background.jpg", frame)
+				background = frame
+				self.dartboard_label.setPixmap(self.dartboard.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio))
+				self.nextPlayer = False
+
+		#Reset Everything
+		self.players: List[player.Player] = []
+		self.game_round = 1
+		self.dartMissed = False
+		self.nextPlayer = False
+		self.forceEnd = False
+		if(utils.debug):
+			cv2.destroyWindow("Old Mask")
+			cv2.destroyWindow("New Mask")
+			cv2.destroyWindow("Detection Frame")
+			cv2.destroyWindow("Background Frame")
+		while not self.leaveGame:
+			cv2.waitKey(1)
+		self.leaveGame = False
+		self.dartboard_label.setPixmap(self.dartboard.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio))
+		self.left_layout.replaceWidget(self.in_game_frame, self.pre_game_frame)
+		self.in_game_frame.hide()
+		self.pre_game_frame.show()
+
+	def onItemChanged(self, item):
+		new_value = False
+		player = self.players[int(item.row())]
+		score = int(item.text())
+		if(self.num_throws == item.column()):
+			new_value = True
+		self.num_throws = item.column()
+		if not new_value:
+			prev_score = player.history[-1][0]
+			player.score = player.score + prev_score
+			player.history[-1][0] = score
+		else:
+			player.history.append([score, [0,0]])
+		if(player.score-score > 0):
+			player.score = player.score-score
+			if not new_value:
+				player.history[-1][0] = score
+			else:
+				player.history.append([score, [0,0]])
+			self.updateTable(player.id-1, self.num_throws, score, player.score, "set")
+			self.num_throws = self.num_throws + 1
+			self.table.blockSignals(True)
+			for col in range(self.num_throws, 4): 
+				empty_item = QTableWidgetItem("")
+				self.table.setItem(player.id - 1 , col, empty_item)
+			self.table.blockSignals(False)
+		elif(player.score-score < 0):
+			if not new_value:
+				player.history[-1][0] = score
+			else:
+				player.history.append([score, [0,0]])
+			while self.num_throws <= 3:
+				self.updateTable(player.id - 1 , self.num_throws, "x", player.score, "set")
+				self.num_throws = self.num_throws + 1
+		else:
+			player.score = player.score - score
+			if not new_value:
+				player.history[-1][0] = score
+			else:
+				player.history.append([score, [0,0]])
+			self.updateTable(player.id - 1 , self.num_throws, score, player.score, "set")
+			self.game_label.setText(f"Player {player.id} Won!")
+			self.forceEnd = True
+			cv2.waitKey(1)
+		
+	def updateTable(self, player=None, throw=None, throw_score=None, score=None, command=None):
+		self.table.blockSignals(True)
+		if(command == "set"):
+			item_throw = QTableWidgetItem(f"{throw_score}")
+			item_throw.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+			self.table.setItem(player, throw, item_throw)
+			item_score = QTableWidgetItem(f"{score}")
+			item_score.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+			self.table.setItem(player, 4, item_score)
+		elif(command == "reset"):
+			for row in range(self.num_players):
+				for col in range(1, 4): 
+					empty_item = QTableWidgetItem("")
+					self.table.setItem(row, col, empty_item)
+		elif(command == "start"):
+			for row in range(self.num_players):
+				item_score = QTableWidgetItem(f"{score}")
+				item_score.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+				self.table.setItem(row, 4, item_score)
+		self.table.blockSignals(False)
+
+	def updateRound(self):
+		self.game_round = self.game_round + 1
+		self.game_label.setText(f"Game: {self.game_type}                              Round: {self.game_round}")
+
+
 	def updateAppDartboard(self, dart_coords):
 		"""
 		update darts on dartboard of the app
 		"""
 		dartboard = self.dartboard.copy().scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio)
-		radius, angle = dart_coords
-		angle = math.radians(360-angle)
-		if(radius <= self.rings[-1]):
-			scaled_radius = (radius / self.rings[-1]) * self.app_dartboard_radius
+		for coords in dart_coords:
+			radius, angle = coords
+			angle = math.radians(360-angle)
+			if(radius <= self.rings[-1]):
+				scaled_radius = (radius / self.rings[-1]) * self.app_dartboard_radius
 
-			x = int(self.app_dartboard_center[0] + scaled_radius * math.cos(angle))
-			y = int(self.app_dartboard_center[1] - scaled_radius * math.sin(angle)) 
+				x = int(self.app_dartboard_center[0] + scaled_radius * math.cos(angle))
+				y = int(self.app_dartboard_center[1] - scaled_radius * math.sin(angle)) 
 
-			painter = QPainter(dartboard)
-			pen = QPen(QColor(255, 0, 255))  
-			pen.setWidth(3)
-			painter.setPen(pen)
-			painter.drawLine(x - 5, y - 5, x + 5, y + 5)
-			painter.drawLine(x - 5, y + 5, x + 5, y - 5)
-			painter.end()
-			self.dartboard_label.setPixmap(dartboard)
+				painter = QPainter(dartboard)
+				pen = QPen(QColor(255, 0, 255))  
+				pen.setWidth(3)
+				painter.setPen(pen)
+				painter.drawLine(x - 5, y - 5, x + 5, y + 5)
+				painter.drawLine(x - 5, y + 5, x + 5, y - 5)
+				painter.end()
+		self.dartboard_label.setPixmap(dartboard)

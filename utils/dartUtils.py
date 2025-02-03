@@ -1,6 +1,8 @@
 import numpy as np
 import cv2
 
+from utils import utils
+
 def compareMasks(mask1, mask2, threshold=0.998):
 		"""
 		Compare two binary masks and check if they are almost identical.
@@ -25,16 +27,20 @@ def findDartTip(contour, thresholdMin=10):
 	distances = [distanceLeft, distanceRight, distanceTop, distanceBot]
 	if any(d <= thresholdMin for d in distances):
 		#Used most of the times
-		print("Debug | Triangle Method")
+		if(utils.debug):
+			print("Debug | Triangle Method")
 		dart_tip = triangle_point_tip.astype(np.int32)
 	elif(distanceLeft <= thresholdMin*1.5):
-		print("Debug | Triangle Method Left Side")
+		if(utils.debug):
+			print("Debug | Triangle Method Left Side")
 		dart_tip = triangle_point_tip.astype(np.int32)
 	elif(distanceLeft <= thresholdMin*3):
-		print("Debug | Left Point Method")
+		if(utils.debug):
+			print("Debug | Left Point Method")
 		dart_tip = left_point_tip.astype(np.int32)
 	else:
-		print("Debug | Centroid Method")
+		if(utils.debug):
+			print("Debug | Centroid Method")
 		centroide_x = int(np.mean(contour[:, 0, 0]))
 		centroide_y = int(np.mean(contour[:, 0, 1]))
 		dart_tip = np.array([centroide_x, centroide_y], dtype=np.int32)
@@ -139,7 +145,7 @@ def evaluateThrow(radius, angle, rings, segments):
 		(segments[16]+0.0001, segments[17]): 18,
 		(segments[17]+0.0001, segments[18]): 4,
 		(segments[18]+0.0001, segments[19]): 13,
-		(segments[19]+0.0001, 360): 6
+		(segments[19]+0.0001, 360+0.0001): 6
 	}
 	multiplier = 1
 	score_point = 0

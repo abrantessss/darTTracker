@@ -1,7 +1,7 @@
-# **darTTracker 🎯** | In Contruction...
+# **darTTracker 🎯** 
 
 ## **Description**  
-This repository is a personal project developed for personal use. It is an automatic dart scoring application that uses a single webcam, inspired by the [Darts_Project](https://github.com/LarsG21/Darts_Project/tree/master). The app supports up to 6 players and offers 3 game modes: 301, 501, and 701.
+This repository is a personal project developed for personal use. It is an automatic dart scoring application that uses a single webcam, inspired by the [Darts_Project](https://github.com/LarsG21/Darts_Project/tree/master). The app supports up to 6 players and offers 4 game modes: 101, 301, 501, and 701.
 
 <p align="center">
   <img src="icons/GUI.png" alt="GUI" width="700"/>
