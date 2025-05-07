@@ -39,5 +39,5 @@ pip install -r packages.txt
 ## **Author**  
 - [@Luís Abrantes](https://github.com/abrantessss)
 
-## **Licence**  
+## **License**  
 This project is licensed under the [MIT Licence](LICENSE).
