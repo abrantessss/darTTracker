@@ -40,4 +40,4 @@ pip install -r packages.txt
 - [@Luís Abrantes](https://github.com/abrantessss)
 
 ## **License**  
-This project is licensed under the [MIT Licence](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
